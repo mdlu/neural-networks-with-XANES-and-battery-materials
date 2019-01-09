@@ -49,7 +49,15 @@ def extract_training_data(cutoff_radius = 2.6): # update the text below to refle
             FeCoorNum.append(len(res['Fe']))
         Y = Y + FeCoorNum
     X = np.delete(X, 0, 1)
-    X = X * 1e7 / 6
+    
+    # older data normalization
+    # X = X * 1e7 / 6
+
+    # new data normalization
+    mu = np.mean(X)
+    std = np.std(X)
+    X = (X - mu) / std
+
     Y = np.array(Y).reshape(1, X.shape[1])
     numOutputNodes = int(Y.max()) + 1
 
@@ -60,8 +68,8 @@ def extract_training_data(cutoff_radius = 2.6): # update the text below to refle
     shuffled_X = X[:, permutation]
     shuffled_Y = Y[:, permutation]
 
-    # generate training, development, and test sets (60:20:20 ratio)
-    divider1 = math.floor(m*3/5)
-    divider2 = math.floor(m*4/5)
+    # generate training, development, and test sets (75:15:10 ratio)
+    divider1 = math.floor(m*3/4)
+    divider2 = math.floor(m*9/10)
     return shuffled_X[:, :divider1], shuffled_X[:, divider1:divider2], shuffled_X[:, divider2:], shuffled_Y[:, :divider1], \
     shuffled_Y[:, divider1:divider2], shuffled_Y[:, divider2:], numOutputNodes

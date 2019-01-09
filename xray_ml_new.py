@@ -11,7 +11,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 
 def model(X_train, Y_train, X_dev, Y_dev, numOutputNodes, learning_rate=0.0001,
-          iterations=5000, minibatch_size = 32, layer1 = 12, layer2 = 8, print_cost=True):
+          iterations=5000, minibatch_size = 32, layer1 = 12, layer2 = 8, beta = 0, print_cost=True):
     """ Three-layer NN to predict Fe coordination numbers around oxygen.
         Default is L2 regularization and Adam. Return optimized parameters.
 
@@ -32,6 +32,8 @@ def model(X_train, Y_train, X_dev, Y_dev, numOutputNodes, learning_rate=0.0001,
 
         layer1, layer2: number of nodes in the first and second hidden layers
 
+        beta = regularization parameter for L2 regularization in the cost function
+
         print_cost: boolean, decides whether or not to print the cost during training
 
         Returns:
@@ -45,21 +47,25 @@ def model(X_train, Y_train, X_dev, Y_dev, numOutputNodes, learning_rate=0.0001,
     tf.reset_default_graph()
 
     tf.set_random_seed(1)                             # to keep consistent results
-    seed = 3                                          # to keep consistent results
+    seed = 1                                          # to keep consistent results
     n_x = X_train.shape[0]                            # n_x : input size (the other dimension is the number of examples in the train set)
     n_y = Y_train.shape[0]                            # n_y : output size
     costs = []
+    
 
     with tf.variable_scope("model", reuse=tf.AUTO_REUSE): # auto_reuse allows for the parameters to be changed to reflect new hyperparameters
+        #(gm1, gv1, gm2, gv2) = (None, None, None, None)
+        
         # Create Placeholders of shape (n_x, n_y)
         X, Y = create_placeholders(n_x, n_y)
         parameters = initialize_parameters(layer1, layer2, numOutputNodes)  # Initialize parameters
 
         # Forward propagation: Build the forward propagation in the tensorflow graph
         Z3 = forward_propagation(X, parameters)
+        Z4 = forward_propagation(X, parameters, isTraining = False)
 
         # Cost function: Add cost function to tensorflow graph
-        cost = compute_cost(Z3, Y, parameters)
+        cost = compute_cost(Z3, Y, parameters, beta)
 
         # Backpropagation: Define the tensorflow optimizer. Use an AdamOptimizer.
         optimizer = tf.train.AdamOptimizer(learning_rate).minimize(cost)
@@ -104,12 +110,12 @@ def model(X_train, Y_train, X_dev, Y_dev, numOutputNodes, learning_rate=0.0001,
         parameters = sess.run(parameters)
         
         # Print the hyperparameters for this particular model
-        print('Learning Rate: %s, Mini-Batch Size: %d, %d Nodes in Layer 1, %d Nodes in Layer 2, %d Output Nodes, %d Iterations' \
-        % (str(learning_rate).rstrip('0'), minibatch_size, layer1, layer2, numOutputNodes, iterations))
+        print('Learning Rate: %s, Mini-Batch Size: %d, Beta: %s, %d Nodes in Layer 1, %d Nodes in Layer 2, %d Output Nodes, %d Iterations' \
+        % (str(learning_rate).rstrip('0'), minibatch_size, str(beta).rstrip('0'), layer1, layer2, numOutputNodes, iterations))
 
         # Calculate the correct predictions
-        correct_prediction = tf.equal(tf.argmax(Z3), tf.argmax(Y))
-
+        correct_prediction = tf.equal(tf.argmax(Z4), tf.argmax(Y))
+        
         # Calculate accuracy on the test set
         accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
 
@@ -120,7 +126,7 @@ def model(X_train, Y_train, X_dev, Y_dev, numOutputNodes, learning_rate=0.0001,
         print("Train Accuracy:", train_acc)
         print("Dev Accuracy:", dev_acc)
 
-        return accs, parameters
+    return accs, parameters
 
 def train_multiple_models(X_train, Y_train, X_dev, Y_dev, numOutputNodes, iterations, hyperparams, print_cost = True):
     """ Allows for the training of different settings of hyperparameters in one function.
@@ -145,8 +151,9 @@ def train_multiple_models(X_train, Y_train, X_dev, Y_dev, numOutputNodes, iterat
         layer1 = h['layer1']
         layer2 = h['layer2']
         minibatch_size = h['minibatch_size']
+        beta = h['beta']
 
-        accs, parameters = model(X_train, Y_train, X_dev, Y_dev, numOutputNodes, learning_rate, iterations, minibatch_size, layer1, layer2, print_cost)
+        accs, parameters = model(X_train, Y_train, X_dev, Y_dev, numOutputNodes, learning_rate, iterations, minibatch_size, layer1, layer2, beta, print_cost)
         
         results[frozenset(h.items())] = accs[1] # store the dev test accuracies in a dictionary
         params[frozenset(h.items())] = parameters # do the same for the learned parameters, to be retrieved at the end
@@ -181,7 +188,8 @@ def final_evaluation(X_test, Y_test, parameters):
 if __name__ == "__main__":
 
     X_train, X_dev, X_test, Y1, Y2, Y3, numOutputNodes = extract_training_data(cutoff_radius = 2.6)
-    # multi classification; convert from array(1, divider) to a one-hot matrix of array(numOutputNodes, divider)
+    
+    # multi-class classification; convert from array(1, divider) to a one-hot matrix of array(numOutputNodes, divider)
     Y_train = one_hot_matrix(Y1.squeeze(), numOutputNodes)
     Y_dev = one_hot_matrix(Y2.squeeze(), numOutputNodes)
     Y_test = one_hot_matrix(Y3.squeeze(), numOutputNodes)
@@ -189,12 +197,13 @@ if __name__ == "__main__":
     learning_rates = [0.0001]
     layer1s = [8]
     layer2s = [8]
-    minibatch_sizes = [147]
+    minibatch_sizes = [16]
+    betas = [0.03, 0.05]
 
-    hyperparams = [{'learning_rate': a, 'layer1': b, 'layer2': c, 'minibatch_size': d} for a in learning_rates for b in layer1s \
-    for c in layer2s for d in minibatch_sizes]
+    hyperparams = [{'learning_rate': a, 'layer1': b, 'layer2': c, 'minibatch_size': d, 'beta': e} for a in learning_rates for b in layer1s \
+    for c in layer2s for d in minibatch_sizes for e in betas]
 
-    results, best, params = train_multiple_models(X_train, Y_train, X_dev, Y_dev, numOutputNodes, 9000, hyperparams, print_cost = False)
+    results, best, params = train_multiple_models(X_train, Y_train, X_dev, Y_dev, numOutputNodes, 7000, hyperparams, print_cost = True)
     prediction, actual, test_acc = final_evaluation(X_test, Y_test, params)
 
     print("Best Hyperparameters:", str(best))

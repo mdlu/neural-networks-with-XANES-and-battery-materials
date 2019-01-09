@@ -56,8 +56,30 @@ def initialize_parameters(L1_units=14, L2_units=9, L3_units=5):
 
     return parameters
 
+# def batch_norm_wrapper(inputs, is_training, decay = 0.99):
+#     epsilon = 1e-4
+    
+#     batch_mean, batch_var = tf.nn.moments(inputs,[0])
+#     scale = tf.Variable(tf.ones_like(batch_mean))
+#     beta = tf.Variable(tf.zeros_like(batch_mean))
+#     pop_mean = tf.Variable(tf.ones_like(batch_mean))
+#     pop_var = tf.Variable(tf.zeros_like(batch_mean))
+    
+#     # scale = tf.Variable(tf.ones([inputs.get_shape().as_list()[-1], 1]))
+#     # beta = tf.Variable(tf.zeros([inputs.get_shape().as_list()[-1], 1]))
+#     # pop_mean = tf.Variable(tf.zeros([inputs.get_shape().as_list()[-1], 1]), trainable=False)
+#     # pop_var = tf.Variable(tf.ones([inputs.get_shape().as_list()[-1], 1]), trainable=False)
 
-def forward_propagation(X, parameters):
+#     if is_training:
+
+#         train_mean = tf.assign(pop_mean, pop_mean * decay + batch_mean * (1 - decay))
+#         train_var = tf.assign(pop_var, pop_var * decay + batch_var * (1 - decay))
+#         with tf.control_dependencies([train_mean, train_var]):
+#             return tf.nn.batch_normalization(inputs, batch_mean, batch_var, beta, scale, epsilon)
+#     else:
+#         return tf.nn.batch_normalization(inputs, pop_mean, pop_var, beta, scale, epsilon)
+
+def forward_propagation(X, parameters, isTraining = True):
     """
     Implements the forward propagation for the model: LINEAR -> RELU -> LINEAR -> RELU -> LINEAR -> SOFTMAX
 
@@ -69,7 +91,8 @@ def forward_propagation(X, parameters):
     Returns:
     Z3 -- the output of the last LINEAR unit
     """
-
+    epsilon = 1e-4
+    
     # Retrieve the parameters from the dictionary "parameters"
     W1 = parameters['W1']
     b1 = parameters['b1']
@@ -77,23 +100,107 @@ def forward_propagation(X, parameters):
     b2 = parameters['b2']
     W3 = parameters['W3']
     b3 = parameters['b3']
-    # Numpy Equivalents:
-    Z1 = tf.add(tf.matmul(W1, X), b1)                      # Z1 = np.dot(W1, X) + b1
-    A1 = tf.nn.relu(Z1)                                    # A1 = relu(Z1)
-    Z2 = tf.add(tf.matmul(W2, A1), b2)                     # Z2 = np.dot(W2, a1) + b2
-    A2 = tf.nn.tanh(Z2)                                    # A2 = relu(Z2)
-    Z3 = tf.add(tf.matmul(W3, A2), b3)                     # Z3 = np.dot(W3,Z2) + b3
 
+    if isTraining: # do not use dropout at test time
+        W1 = tf.nn.dropout(W1, 0.9)
+    Z1 = tf.add(tf.matmul(W1, X), b1)
+    A1 = tf.nn.relu(Z1)
+    m1, v1 = tf.nn.moments(A1, [0])
+    A1 = (A1 - m1) / tf.sqrt(v1 + epsilon)
+    if isTraining:
+        A1 = tf.nn.dropout(A1, 0.9)
+
+    Z2 = tf.add(tf.matmul(W2, A1), b2)
+    A2 = tf.nn.tanh(Z2)
+    m2, v2 = tf.nn.moments(A2, [0])
+    A2 = (A2 - m2) / tf.sqrt(v2 + epsilon)
+    if isTraining:
+        A2 = tf.nn.dropout(A2, 0.9)
+
+    Z3 = tf.add(tf.matmul(W3, A2), b3)
     return Z3
 
+    # if isTraining:
+    #     Z1 = tf.add(tf.matmul(W1, X), b1)
+    #     m1, v1 = tf.nn.moments(Z1, [0])
+    #     if gm1:
+    #         gm1 = 0.99 * gm1 + 0.01 * m1
+    #         gv1 = 0.99 * gv1 + 0.01 * v1
+    #     else:
+    #         gm1 = 0.01 * m1
+    #         gv1 = 0.01 * v1
+    #     Z1n = (Z1 - m1) / tf.sqrt(v1 + epsilon)
+    #     A1 = tf.nn.relu(Z1n)
 
-def compute_cost(Z3, Y, parameters):
+    #     Z2 = tf.add(tf.matmul(W2, A1), b2)
+    #     m2, v2 = tf.nn.moments(Z2, [0])
+    #     if gm2:
+    #         gm2 = 0.99 * gm2 + 0.01 * m2
+    #         gv2 = 0.99 * gv2 + 0.01 * v2
+    #     else:
+    #         gm2 = 0.01 * m2
+    #         gv2 = 0.01 * v2
+    #     Z2n = (Z2 - m2) / tf.sqrt(v2 + epsilon)
+    #     A2 = tf.nn.tanh(Z2n)
+
+    #     Z3 = tf.add(tf.matmul(W3, A2), b3)
+    #     return Z3, gm1, gv1, gm2, gv2
+    # else:
+    #     Z1 = tf.add(tf.matmul(W1, X), b1)
+    #     Z1n = (Z1 - gm1) / tf.sqrt(gv1 + epsilon)
+    #     A1 = tf.nn.relu(Z1n)
+
+    #     Z2 = tf.add(tf.matmul(W2, A1), b2)
+    #     Z2n = (Z2 - gm2) / tf.sqrt(gv2 + epsilon)
+    #     A2 = tf.nn.tanh(Z2n)
+
+    #     Z3 = tf.add(tf.matmul(W3, A2), b3)
+    #     return Z3
+
+    # if isTraining:
+    #     # Forward propagation, including batch-normalization
+    #     Z1 = tf.add(tf.matmul(W1, X), b1)
+    #     m1, v1 = tf.nn.moments(Z1, [0]) # calculates the mean and variance
+    #     am1 = tf.assign(gm1, gm1 * 0.99 + m1 * 0.01)
+    #     av1 = tf.assign(gv1, gv1 * 0.99 + v1 * 0.01)
+    #     #gm1 = 0.99 * gm1 + 0.01 * m1 # keep track of global values of mean and variance for use at test-time
+    #     #gv1 = 0.99 * gv1 + 0.01 * v1
+    #     Z1n = (Z1 - m1) / tf.sqrt(v1 + epsilon) # batch-normalization
+    #     A1 = tf.nn.relu(Z1n)
+
+    #     Z2 = tf.add(tf.matmul(W2, A1), b2)
+    #     m2, v2 = tf.nn.moments(Z2, [0])
+    #     am2 = tf.assign(gm2, gm2 * 0.99 + m2 * 0.01)
+    #     av2 = tf.assign(gv2, gv2 * 0.99 + v2 * 0.01)
+    #     #gm2 = 0.99 * gm2 + 0.01 * m2 # keep track of global values of mean and variance for use at test-time
+    #     #gv2 = 0.99 * gv2 + 0.01 * v2
+    #     Z2n = (Z2 - m2) / tf.sqrt(v2 + epsilon)
+    #     A2 = tf.nn.tanh(Z2n)
+
+    #     Z3 = tf.add(tf.matmul(W3, A2), b3)
+    #     return Z3, gm1, gv1, gm2, gv2
+
+    # else: # at test time, we use the global values of mean and variance instead
+    #     Z1 = tf.add(tf.matmul(W1, X), b1)
+    #     Z1n = (Z1 - gm1) / tf.sqrt(gv1 + epsilon) # batch-normalization
+    #     A1 = tf.nn.relu(Z1n)
+
+    #     Z2 = tf.add(tf.matmul(W2, A1), b2)
+    #     Z2n = (Z2 - gm2) / tf.sqrt(gv2 + epsilon)
+    #     A2 = tf.nn.tanh(Z2n)
+
+    #     Z3 = tf.add(tf.matmul(W3, A2), b3)
+    #     return Z3
+
+def compute_cost(Z3, Y, parameters, beta = 0):
     """
     Computes the cost
 
     Arguments:
     Z3 -- output of forward propagation (output of the last LINEAR unit), of shape (5, number of examples)
     Y -- "true" labels vector placeholder, same shape as Z3
+    parameters -- dictionary of the matrices of weights and biases
+    beta -- the regularization parameter
 
     Returns:
     cost - Tensor of the cost function
@@ -107,8 +214,7 @@ def compute_cost(Z3, Y, parameters):
     labels = tf.transpose(Y)
     # normal loss function
     cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=labels))
-    # loss function with L2 regularization with beta = 0.05
-    beta = 0.05
+    # loss function with L2 regularization with beta
     regularizers = tf.nn.l2_loss(W1) + tf.nn.l2_loss(W2) + tf.nn.l2_loss(W3)
     cost = tf.reduce_mean(cost + beta * regularizers)
 
@@ -132,7 +238,7 @@ def predict(X, parameters):
 
     x = tf.placeholder(tf.float32, shape=(170, None), name='x')
 
-    z3 = forward_propagation(x, params)
+    z3 = forward_propagation(x, params, isTraining = False)
     p = tf.argmax(z3)
 
     sess = tf.Session()
