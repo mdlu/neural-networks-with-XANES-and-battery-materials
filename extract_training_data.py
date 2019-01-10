@@ -50,6 +50,8 @@ def extract_training_data(cutoff_radius = 2.6): # update the text below to refle
         Y = Y + FeCoorNum
     X = np.delete(X, 0, 1)
     
+    X, Y = data_augmentation(X, Y) # data augmentation
+
     # older data normalization
     # X = X * 1e7 / 6
 
@@ -73,3 +75,27 @@ def extract_training_data(cutoff_radius = 2.6): # update the text below to refle
     divider2 = math.floor(m*9/10)
     return shuffled_X[:, :divider1], shuffled_X[:, divider1:divider2], shuffled_X[:, divider2:], shuffled_Y[:, :divider1], \
     shuffled_Y[:, divider1:divider2], shuffled_Y[:, divider2:], numOutputNodes
+
+
+def data_augmentation(X, Y):
+    """ Given data set X and its corresponding labels Y, augments the data by averaging multiple spectra 
+        with the same label and assigning this new average to that label.
+
+        Returns:
+        ----------------------------
+        bigX, bigY: augmented versions of X and Y
+    """
+    bigX = np.zeros((170, 1), float)
+    bigY = np.zeros((1, 1), float)
+
+    for num in np.unique(Y):
+        Xwithnum = [X[:, i] for i in range(X.shape[1]) if Y[i] == num] # finds all spectra with the same label
+        newXs = np.array([np.add(a, b) / 2 for a in Xwithnum for b in Xwithnum]) # combines spectra two at a time and averages
+        newYs = np.ones((1, newXs.shape[0])) * num # all new generated spectra have the same label
+        bigX = np.concatenate((bigX, newXs.T), 1)
+        bigY = np.concatenate((bigY, newYs), 1)
+    
+    bigX = np.delete(bigX, 0, 1) # remove the first column of zeros that we initialized bigX and bigY with
+    bigY = np.delete(bigY, 0, 1)
+
+    return bigX, bigY

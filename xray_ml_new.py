@@ -195,15 +195,15 @@ if __name__ == "__main__":
     Y_test = one_hot_matrix(Y3.squeeze(), numOutputNodes)
 
     learning_rates = [0.0001]
-    layer1s = [8]
-    layer2s = [8]
+    layer1s = [8, 10, 12, 14]
+    layer2s = [5, 6, 7, 8, 9]
     minibatch_sizes = [16]
-    betas = [0.03, 0.05]
+    betas = [0.01, 0.03]
 
     hyperparams = [{'learning_rate': a, 'layer1': b, 'layer2': c, 'minibatch_size': d, 'beta': e} for a in learning_rates for b in layer1s \
     for c in layer2s for d in minibatch_sizes for e in betas]
 
-    results, best, params = train_multiple_models(X_train, Y_train, X_dev, Y_dev, numOutputNodes, 7000, hyperparams, print_cost = True)
+    results, best, params = train_multiple_models(X_train, Y_train, X_dev, Y_dev, numOutputNodes, 150, hyperparams, print_cost = False)
     prediction, actual, test_acc = final_evaluation(X_test, Y_test, params)
 
     print("Best Hyperparameters:", str(best))
