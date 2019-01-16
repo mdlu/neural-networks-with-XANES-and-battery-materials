@@ -66,5 +66,3 @@ def find_neighbors(ctrAtom, cutoff, POSCAR="POSCAR"):
     # remove the central atom from the dictionary
     del res[ctrAtom_name][ctrAtom]
     return(res)
-
-#print(find_neighbors("O12", 2.6, "/Users/mdlu8/Dropbox (MIT)/Python/argonne/POSCAR"))
