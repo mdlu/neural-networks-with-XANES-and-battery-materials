@@ -1,9 +1,10 @@
 import tensorflow as tf
 import numpy as np
 import math
-from extract_training_data import extract_training_data
+import datetime
+# from extract_training_data import extract_training_data
 import matplotlib.pyplot as plt
-from ml_helpers_new import one_hot_matrix, create_placeholders, initialize_parameters, forward_propagation, compute_reg_cost, predict, random_mini_batches
+from ml_helpers_new import load_data, one_hot_matrix, create_placeholders, initialize_parameters, forward_propagation, compute_reg_cost, random_mini_batches
 from timeit import default_timer as timer
 
 #disables AVX warning
@@ -60,7 +61,7 @@ def model(X_train, Y_train, X_dev, Y_dev, numOutputNodes, learning_rate = 0.0001
     (n_x, m) = X_train.shape                          # n_x : input size (the other dimension is the number of examples in the train set)
     n_y = Y_train.shape[0]                            # n_y : output size
     costs = []                                        # holds data for graphing
-
+    
     # Create Placeholders of shape (n_x, n_y)
     X, Y = create_placeholders(n_x, n_y)
     parameters = initialize_parameters(layer1, 1, regression = True)  # Initialize parameters, with one hidden layer
@@ -79,6 +80,7 @@ def model(X_train, Y_train, X_dev, Y_dev, numOutputNodes, learning_rate = 0.0001
 
     # Initialize all the variables
     init = tf.global_variables_initializer()
+    saver = tf.train.Saver()
 
     # Calculate the correct predictions
     correct_prediction = tf.less_equal(tf.abs(tf.divide(tf.subtract(Z3, Y), Y)), tf.fill([1,1], 0.05)) # define one measure of accuracy by counting a prediction as correct if it's within 5% of the true value
@@ -114,8 +116,8 @@ def model(X_train, Y_train, X_dev, Y_dev, numOutputNodes, learning_rate = 0.0001
             # Print the cost every epoch
             # if print_cost == True and epoch % 100 == 0:
             #     print("Cost after iteration %i: %f" % (epoch, epoch_cost))
-            # if print_cost == True and epoch % 5 == 0:
-            #     costs.append(epoch_cost)
+            if print_cost == True and epoch % 5 == 0:
+                costs.append(epoch_cost)
 
             if print_cost == True and epoch % 200 == 0: # used during testing to ensure gradient descent is working properly
                 train_accuracy = accuracy.eval({X: X_train, Y: Y_train, training: False})
@@ -138,13 +140,17 @@ def model(X_train, Y_train, X_dev, Y_dev, numOutputNodes, learning_rate = 0.0001
 
         # Save the parameters in a variable
         parameters = sess.run(parameters)
-        
+        save_path = saver.save(sess, "./models/regression_model_{}_{}_{}_{}.ckpt".format(learning_rate, \
+        iterations, layer1, beta))
+
+
         train_acc = accuracy.eval({X: X_train, Y: Y_train, training: False})
         dev_acc = accuracy.eval({X: X_dev, Y: Y_dev, training: False})
-        accs = [train_acc, dev_acc]
-
+        
         mape_train = MAPE.eval({X: X_train, Y: Y_train, training: False})
         mape_dev = MAPE.eval({X: X_dev, Y: Y_dev, training: False})
+
+        accs = [train_acc, dev_acc, mape_train, mape_dev]
 
         print("Train Accuracy:", train_acc, "; MAPE:", mape_train)
         print("Dev Accuracy:", dev_acc, "; MAPE:", mape_dev)
@@ -185,15 +191,51 @@ def train_multiple_models(X_train, Y_train, X_dev, Y_dev, numOutputNodes, iterat
             istanh2 = False
             accs, parameters = model(X_train, Y_train, X_dev, Y_dev, numOutputNodes, learning_rate, iterations, minibatch_size, layer1, layer2, beta, dropout, istanh1, istanh2, batchnorm, print_cost)
             
-            results[frozenset(h.items())] = accs[1] # store the dev test accuracies in a dictionary
+            results[frozenset(h.items())] = accs[3] # store the dev test MAPEs in a dictionary
             params[frozenset(h.items())] = parameters # do the same for the learned parameters, to be retrieved at the end
     
     except KeyboardInterrupt: # allow for exiting the for loop in case we want to stop testing all the hyperparameters; to use, press Ctrl+C in terminal
         pass
         
-    best = max(results, key=results.get) # finds what setting of hyperparameters had the highest dev accuracy
+    best = min(results, key=results.get) # finds what setting of hyperparameters had the lowest MAPE
 
     return results, list(best), params[best]
+
+
+def train_models_change_nodes(X_train, Y_train, X_dev, Y_dev, numOutputNodes, iterations, nodes, print_cost = True):
+    """ Same as train_multiple_models(), except all hyperparameters are fixed except for the number of nodes in the hidden layer.
+        Learning rate: 0.003
+        Mini-batch size: 16
+        Beta: 0
+        Dropout: 1.0 (i.e. no dropout)
+        Activation function: ReLU
+        Batchnorm: True
+    """
+    
+    results = {}
+    params = {}
+
+    try:
+        for n in nodes:
+            accs, parameters = model(X_train, Y_train, X_dev, Y_dev, numOutputNodes, 0.003, iterations, 16, n, 0, 0.0, 1.0, False, False, True, print_cost)
+            
+            results[n] = accs[3]
+            params[n] = parameters
+            
+    except KeyboardInterrupt: # allow for exiting the for loop in case we want to stop testing all the hyperparameters; to use, press Ctrl+C in terminal
+        pass
+        
+    best = min(results, key=results.get)
+    mapes = [results[l] for l in nodes]
+
+    if print_cost:
+        plt.plot(nodes, mapes)
+        plt.ylabel('MAPE')
+        plt.xlabel('# of nodes in hidden layer')
+        plt.title("learning rate = 0.003, mini-batch = 16, beta = 0")
+        plt.show()
+    
+    return results, best, params[best]
 
 # def final_evaluation(X_test, Y_test, parameters): # currently not functional
 #     """ Evaluates the learned parameters on the test set.
@@ -221,13 +263,53 @@ def train_multiple_models(X_train, Y_train, X_dev, Y_dev, numOutputNodes, iterat
 if __name__ == "__main__":
     
     start = timer()
-    X_train, X_dev, X_test, Y_train, Y_dev, Y_test, numOutputNodes = extract_training_data(num = 10000, cutoff_radius = 2.6, augment = True)
+
+    o = int(input('How many iterations? ')) # used to be 6000
 
     # sets of hyperparameters to test, in a grid search
-    learning_rates = [0.001]
-    layer1s = [16, 25, 36, 49] 
-    minibatch_sizes = [16]
-    betas = [0.0, 0.001] 
+    p = input('Learning rates? Separate by commas. ').split(',')
+    p = [float(i) for i in p]
+
+    q = input('Layer 1s? Separate by commas. ').split(',')
+    q = [int(i) for i in q]
+
+    r = input('Minibatch sizes? Separate by commas. ').split(',')
+    r = [int(i) for i in r]
+
+    s = input('Betas? Separate by commas. ').split(',')
+    s = [float(i) for i in s]
+
+
+    [X_train, X_dev, X_test, Y_train, Y_dev, Y_test, numOutputNodes] = load_data('regression') 
+    
+    # traindev = np.concatenate((Y_train, Y_dev), 1)
+    # traindevtest = np.concatenate((traindev, Y_test), 1)
+    # tdt = traindevtest.reshape(traindevtest.shape[1],)
+
+    # Y_train = Y_train.reshape(Y_train.shape[1],)
+    # Y_dev = Y_dev.reshape(Y_dev.shape[1],)
+    # Y_test = Y_test.reshape(Y_test.shape[1],)
+
+    # sigma = np.round(np.std(tdt), 3)
+    # mu = np.round(np.mean(tdt), 3)
+
+    # plt.figure(1)
+    # plt.hist(tdt)
+    # plt.title("{} data points, mu = {}, sigma = {}".format(tdt.size, mu, sigma))
+    # plt.xlabel("average Fe coordination number")
+    # plt.ylabel("frequency")
+    # plt.show()
+
+    # plt.figure(2)
+    # plt.hist([Y_train, Y_dev, Y_test])
+    # plt.xlabel("average Fe coordination number")
+    # plt.ylabel("frequency")
+    # plt.show()
+
+    learning_rates = p
+    layer1s = q
+    minibatch_sizes = r
+    betas = s
     dropouts = [1.0] # disregard; seems to have no effect
     istanh1s = [False] # false: means that ReLU is used
     batchnorms = [True]
@@ -236,7 +318,7 @@ if __name__ == "__main__":
     hyperparams = [{'learning_rate': a, 'layer1': b, 'minibatch_size': d, 'beta': e, 'dropout': f, 'istanh1': g, 'batchnorm': i} for a in learning_rates for b in layer1s \
     for d in minibatch_sizes for e in betas for f in dropouts for g in istanh1s for i in batchnorms]
 
-    results, best, params = train_multiple_models(X_train, Y_train, X_dev, Y_dev, numOutputNodes, 6000, hyperparams, print_cost = True)
+    results, best, params = train_multiple_models(X_train, Y_train, X_dev, Y_dev, numOutputNodes, o, hyperparams, print_cost = True)
     #prediction, actual, test_acc = final_evaluation(X_test, Y_test, params)
 
     print(results)

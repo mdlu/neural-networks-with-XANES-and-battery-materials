@@ -31,6 +31,11 @@ def create_placeholders(n_x, n_y):
     Y = tf.placeholder(tf.float32, shape=(n_y, None), name='Y')
     return X, Y
 
+def create_placeholders_multi(n_x, n_y1, n_y2):
+    X = tf.placeholder(tf.float32, shape=(n_x, None), name='X')
+    Y1 = tf.placeholder(tf.float32, shape=(n_y1, None), name='Y1')
+    Y2 = tf.placeholder(tf.float32, shape=(n_y2, None), name='Y2')
+    return X, Y1, Y2
 
 def initialize_parameters(L1_units=14, L2_units=9, L3_units=5, regression = False):
     """
@@ -44,20 +49,37 @@ def initialize_parameters(L1_units=14, L2_units=9, L3_units=5, regression = Fals
     parameters -- a dictionary of tensors containing W1, b1, W2, b2, (and if there are two hidden layers, W3 and b3 as well)
     """
 
-    # tf.set_random_seed(1) # if consistent results are desired, also use seed=1 in the parameters of the initializers
-    W1 = tf.get_variable("W1", [L1_units, 170], initializer=tf.contrib.layers.xavier_initializer())
-    b1 = tf.get_variable("b1", [L1_units, 1], initializer=tf.contrib.layers.xavier_initializer())
-    W2 = tf.get_variable("W2", [L2_units, L1_units], initializer=tf.contrib.layers.xavier_initializer())
-    b2 = tf.get_variable("b2", [L2_units, 1], initializer=tf.contrib.layers.xavier_initializer())
+    tf.set_random_seed(1) # if consistent results are desired, also use seed=1 in the parameters of the initializers
+    W1 = tf.get_variable("W1", [L1_units, 170], initializer=tf.contrib.layers.xavier_initializer(seed=1))
+    b1 = tf.get_variable("b1", [L1_units, 1], initializer=tf.contrib.layers.xavier_initializer(seed=1))
+    W2 = tf.get_variable("W2", [L2_units, L1_units], initializer=tf.contrib.layers.xavier_initializer(seed=1))
+    b2 = tf.get_variable("b2", [L2_units, 1], initializer=tf.contrib.layers.xavier_initializer(seed=1))
     
     if not regression: # currently, in the regression case, we are only using one hidden layer; this is for the case when we have two
-        W3 = tf.get_variable("W3", [L3_units, L2_units], initializer=tf.contrib.layers.xavier_initializer())
-        b3 = tf.get_variable("b3", [L3_units, 1], initializer=tf.contrib.layers.xavier_initializer())
+        W3 = tf.get_variable("W3", [L3_units, L2_units], initializer=tf.contrib.layers.xavier_initializer(seed=1))
+        b3 = tf.get_variable("b3", [L3_units, 1], initializer=tf.contrib.layers.xavier_initializer(seed=1))
         parameters = {"W1": W1, "b1": b1, "W2": W2, "b2": b2, "W3": W3, "b3": b3}
 
     else:
         parameters = {"W1": W1, "b1": b1, "W2": W2, "b2": b2}
 
+    return parameters
+
+def initialize_parameters_multi(L1_units, L2_units_1, L2_units_2, L3_units_1, L3_units_2):
+
+    tf.set_random_seed(1) # for consistency
+    W1 = tf.get_variable("W1", [L1_units, 170], initializer=tf.contrib.layers.xavier_initializer(seed=1))
+    b1 = tf.get_variable("b1", [L1_units, 1], initializer=tf.contrib.layers.xavier_initializer(seed=1))
+    W2_1 = tf.get_variable("W2_1", [L2_units_1, L1_units], initializer=tf.contrib.layers.xavier_initializer(seed=1))
+    b2_1 = tf.get_variable("b2_1", [L2_units_1, 1], initializer=tf.contrib.layers.xavier_initializer(seed=1))
+    W2_2 = tf.get_variable("W2_2", [L2_units_2, L1_units], initializer=tf.contrib.layers.xavier_initializer(seed=1))
+    b2_2 = tf.get_variable("b2_2", [L2_units_2, 1], initializer=tf.contrib.layers.xavier_initializer(seed=1))
+    W3_1 = tf.get_variable("W3_1", [L3_units_1, L2_units_1], initializer=tf.contrib.layers.xavier_initializer(seed=1))
+    b3_1 = tf.get_variable("b3_1", [L3_units_1, 1], initializer=tf.contrib.layers.xavier_initializer(seed=1))
+    W3_2 = tf.get_variable("W3_2", [L3_units_2, L2_units_2], initializer=tf.contrib.layers.xavier_initializer(seed=1))
+    b3_2 = tf.get_variable("b3_2", [L3_units_2, 1], initializer=tf.contrib.layers.xavier_initializer(seed=1))
+
+    parameters = {"W1" : W1, "b1": b1, "W2_1" : W2_1, "b2_1" : b2_1, "W2_2" : W2_2, "b2_2": b2_2, "W3_1" : W3_1, "b3_1" : b3_1, "W3_2" : W3_2, "b3_2" : b3_2}
     return parameters
 
 def forward_propagation(X, parameters, training, istanh1, istanh2, batchnorm, dropout = 0.5, regression = False):
@@ -72,9 +94,9 @@ def forward_propagation(X, parameters, training, istanh1, istanh2, batchnorm, dr
     regression: boolean; if True, only one hidden layer is used; if False, then two are used
 
     Returns:
-    eithe Z2 or Z3, the output of the last unit, depending on the number of hidden layers
+    eithet Z2 or Z3, the output of the last unit, depending on the number of hidden layers
     """
-
+    
     # Retrieve the parameters from the dictionary "parameters"
     W1 = parameters['W1']
     b1 = parameters['b1']
@@ -97,8 +119,8 @@ def forward_propagation(X, parameters, training, istanh1, istanh2, batchnorm, dr
         A1 = tf.nn.tanh(Z1)
     else:
         A1 = tf.nn.relu(Z1)
-    # if training:
-    #     A1 = tf.nn.dropout(A1, dropout)
+    if training:
+        A1 = tf.nn.dropout(A1, dropout)
     Z2 = tf.add(tf.matmul(W2, A1), b2)
     if regression:
         return Z2 # return, since in the regression case, we only have one hidden layer
@@ -110,11 +132,37 @@ def forward_propagation(X, parameters, training, istanh1, istanh2, batchnorm, dr
             A2 = tf.nn.tanh(Z2)
         else:
             A2 = tf.nn.relu(Z2)
-        # if training:
-        #     A2 = tf.nn.dropout(A2, dropout)
+        if training:
+            A2 = tf.nn.dropout(A2, dropout)
         Z3 = tf.add(tf.matmul(W3, A2), b3)
 
         return Z3
+
+def forward_propagation_multi(X, parameters):
+    # Retrieve the parameters from the dictionary "parameters"
+    W1 = parameters['W1']
+    b1 = parameters['b1']
+    W2_1 = parameters['W2_1']
+    b2_1 = parameters['b2_1']
+    W2_2 = parameters['W2_2']
+    b2_2 = parameters['b2_2']
+    W3_1 = parameters['W3_1']
+    b3_1 = parameters['b3_1']
+    W3_2 = parameters['W3_2']
+    b3_2 = parameters['b3_2']
+
+    Z1 = tf.add(tf.matmul(W1, X), b1)
+    A1 = tf.nn.relu(Z1)
+    
+    Z2_1 = tf.add(tf.matmul(W2_1, A1), b2_1)
+    A2_1 = tf.nn.relu(Z2_1)
+    Z2_2 = tf.add(tf.matmul(W2_2, A1), b2_2)
+    A2_2 = tf.nn.relu(Z2_2)
+    
+    Z3_1 = tf.add(tf.matmul(W3_1, A2_1), b3_1)
+    Z3_2 = tf.add(tf.matmul(W3_2, A2_2), b3_2)
+    
+    return Z3_1, Z3_2
 
 def compute_cost(Z3, Y, parameters, beta = 0):
     """
@@ -161,32 +209,6 @@ def compute_reg_cost(Z3, Y, parameters, beta = 0):
     return cost
 
 
-def predict(X, parameters, training, istanh1, istanh2, batchnorm): # currently not functional
-    W1 = tf.convert_to_tensor(parameters["W1"])
-    b1 = tf.convert_to_tensor(parameters["b1"])
-    W2 = tf.convert_to_tensor(parameters["W2"])
-    b2 = tf.convert_to_tensor(parameters["b2"])
-    W3 = tf.convert_to_tensor(parameters["W3"])
-    b3 = tf.convert_to_tensor(parameters["b3"])
-
-    params = {"W1": W1,
-              "b1": b1,
-              "W2": W2,
-              "b2": b2,
-              "W3": W3,
-              "b3": b3}
-
-    x = tf.placeholder(tf.float32, shape=(170, None), name='x')
-    
-    z3 = forward_propagation(x, params, training, istanh1, istanh2, batchnorm, regression = False)
-    p = tf.argmax(z3)
-
-    sess = tf.Session()
-    prediction = sess.run(p, feed_dict={x: X})
-
-    return prediction
-
-
 def random_mini_batches(X, Y, mini_batch_size = 16, seed = 0):
     """
     Creates a list of random minibatches from (X, Y)
@@ -212,3 +234,34 @@ def random_mini_batches(X, Y, mini_batch_size = 16, seed = 0):
     mini_batches = [(shuffled_X[:, k*mini_batch_size:(k+1)*mini_batch_size], shuffled_Y[:, k*mini_batch_size:(k+1)*mini_batch_size]) for k in range(math.ceil(m/mini_batch_size))]
 
     return mini_batches
+
+def load_data(task):
+    """ Loads the computed data arrays stored on the computer. """
+
+    data = []
+
+    if task == 'new':
+        for i in ['x', 'y']:
+            for j in ['train', 'dev', 'test']:
+                name = './parsed_data/' + i + j + 'coords.npy'
+                data.append(np.load(name))
+        data.append(5)
+
+    elif task == 'regression':
+        for i in ['x', 'y']:
+            for j in ['train', 'dev', 'test']:
+                name = './parsed_data/' + i + j + 'avgcoords.npy'
+                data.append(np.load(name))
+        data.append(1)
+    
+    elif task == 'multi_task':
+        for i in ['x', 'y1', 'y2']:
+            for j in ['train', 'dev', 'test']:
+                name = './parsed_data/' + i + j + 'multi.npy'
+                data.append(np.load(name))
+        data.append(5)
+    
+    else:
+        raise ValueError('invalid input')
+
+    return data

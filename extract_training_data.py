@@ -2,12 +2,11 @@ import numpy as np
 import os
 import sys
 import math
-sys.path.append("/Users/mdlu8/Dropbox (MIT)/Python/argonne/")
 from atoms_dist import atoms_dist
 from Find_neighbors import find_neighbors
 
 
-def extract_training_data(num = 5000, cutoff_radius = 2.6, augment = False):
+def extract_training_data(num = 5000, cutoff_radius = 2.6, augment = False, multi = False):
     """ Calculate Fe coordination numbers around oxygen. Return trainin, dev, and test sets.
         Fourteen Li3FeO3.5 POSCARs are used. 170 data points for each XANES spectrum.
         If calculating the average coordination number by averaging 49 spectra together, augment is sent to True, and we use regression.
@@ -44,51 +43,70 @@ def extract_training_data(num = 5000, cutoff_radius = 2.6, augment = False):
     """
     X = np.zeros((170, 1), float)  # 170 is the number of data points in the spectrum
     Y = []
+    if multi:
+        Y2 = np.zeros((1, 1), float)
 
     # extract the data, stored in three separate directories
-    for i in ['0K', '15ps', '20ps']:
-        prefix = "/Users/lum/Downloads/argonne/" 
-        FeCoorNum = []
-        tmp = np.loadtxt(prefix + i + "_Combo_O_all.dat")
-        # energy range [-1 eV ~ 14 eV], 170 data points
-        X = np.concatenate((X, tmp[436:606, 1:]), 1)
-        for O_index in range(1, 50): # cycles through the 49 oxygen atoms present
-            res = find_neighbors('O' + str(O_index), cutoff_radius, prefix + "POSCAR_" + i)
-            FeCoorNum.append(len(res['Fe'])) # this adds the calculated Fe coordination number for this particular oxygen atom
-        Y = Y + FeCoorNum
-    
-    for i in ['300K/', '1000K/']:
-        for n in ['01/', '02/', '03/', '04/', '05/']:
-            prefix = "/Users/lum/Downloads/argonne/new_data/" 
+    if not multi:
+        for i in ['0K', '15ps', '20ps']:
+            prefix = "C:/Users/mdlu8/Dropbox (MIT)/Python/argonne/" 
             FeCoorNum = []
-            tmp = np.loadtxt(prefix + i + n + "Combo_O_all.dat")
-            X = np.concatenate((X, tmp[438:608, 1:]), 1)
-            for O_index in range(1, 50):
-                res = find_neighbors('O' + str(O_index), cutoff_radius, prefix + i + n + "CONTCAR")
-                FeCoorNum.append(len(res['Fe']))
+            tmp = np.loadtxt(prefix + i + "_Combo_O_all.dat")
+            # energy range [-1 eV ~ 14 eV], 170 data points
+            X = np.concatenate((X, tmp[436:606, 1:]), 1)
+            for O_index in range(1, 50): # cycles through the 49 oxygen atoms present
+                res = find_neighbors('O' + str(O_index), cutoff_radius, prefix + "POSCAR_" + i)
+                FeCoorNum.append(len(res['Fe'])) # this adds the calculated Fe coordination number for this particular oxygen atom
             Y = Y + FeCoorNum
-
-    prefix = "/Users/lum/Downloads/argonne/new_data/300K/06/" 
-    FeCoorNum = []
-    tmp = np.loadtxt(prefix + "Combo_O_all.dat")
-    X = np.concatenate((X, tmp[438:608, 1:]), 1)
-    for O_index in range(1, 50):
-        res = find_neighbors('O' + str(O_index), cutoff_radius, prefix + "CONTCAR")
-        FeCoorNum.append(len(res['Fe']))
-    Y = Y + FeCoorNum
     
+    for n in ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10']:
+        prefix = "C:/Users/mdlu8/Dropbox (MIT)/Python/argonne/new_data/300k/" 
+        FeCoorNum = []
+        tmp = np.loadtxt(prefix + n + "/Combo_O_all.dat")
+        X = np.concatenate((X, tmp[438:608, 1:]), 1)
+        for O_index in range(1, 50):
+            res = find_neighbors('O' + str(O_index), cutoff_radius, prefix + n + "/CONTCAR")
+            FeCoorNum.append(len(res['Fe']))
+        Y = Y + FeCoorNum
+        
+        if multi:
+            charges = np.loadtxt(prefix + n + "/charge.dat").reshape(1, 49)
+            Y2 = np.concatenate((Y2, charges), 1)
+
+
+    for n in ['01', '02', '03', '04', '05']:
+        prefix = "C:/Users/mdlu8/Dropbox (MIT)/Python/argonne/new_data/1000K/" 
+        FeCoorNum = []
+        tmp = np.loadtxt(prefix + n + "/Combo_O_all.dat")
+        X = np.concatenate((X, tmp[438:608, 1:]), 1)
+        for O_index in range(1, 50):
+            res = find_neighbors('O' + str(O_index), cutoff_radius, prefix + n + "/CONTCAR")
+            FeCoorNum.append(len(res['Fe']))
+        Y = Y + FeCoorNum
+        
+        if multi:
+            charges = np.loadtxt(prefix + n + "/charge.dat").reshape(1, 49)
+            Y2 = np.concatenate((Y2, charges), 1)
+
 
     X = np.delete(X, 0, 1) # remove the first column of zeros used to initialize X
-    
+
     if augment:
         X, Y = data_augmentation(X, Y, num) # computes averaged spectra and labels
 
     Y = np.array(Y).reshape(1, X.shape[1])
-    numOutputNodes = int(Y.max()) + 1
+    if multi: 
+        Y2 = np.delete(Y2, 0, 1) 
+        Y2 = np.array(Y2).reshape(1, X.shape[1])
+
+    if augment:
+        numOutputNodes = 1
+    else:
+        numOutputNodes = int(Y.max()) + 1
 
     # shuffle the input data
     m = X.shape[1]
-    # np.random.seed(0) # used if consistency is desired
+    np.random.seed(0) # used if consistency is desired
     permutation = list(np.random.permutation(m))
     shuffled_X = X[:, permutation]
     shuffled_Y = Y[:, permutation]
@@ -105,8 +123,16 @@ def extract_training_data(num = 5000, cutoff_radius = 2.6, augment = False):
     std = np.std(shuffled_X[:, :divider1], axis=1).reshape(170, 1)
     shuffled_X = (shuffled_X - mu) / std
     
-    return shuffled_X[:, :divider1], shuffled_X[:, divider1:divider2], shuffled_X[:, divider2:], shuffled_Y[:, :divider1], \
-    shuffled_Y[:, divider1:divider2], shuffled_Y[:, divider2:], numOutputNodes
+    if multi:
+        shuffled_Y2 = Y2[:, permutation]
+
+        return shuffled_X[:, :divider1], shuffled_X[:, divider1:divider2], shuffled_X[:, divider2:], shuffled_Y[:, :divider1], \
+        shuffled_Y[:, divider1:divider2], shuffled_Y[:, divider2:], shuffled_Y2[:, :divider1], shuffled_Y2[:, divider1:divider2], \
+        shuffled_Y2[:, divider2:], numOutputNodes
+    
+    else:
+        return shuffled_X[:, :divider1], shuffled_X[:, divider1:divider2], shuffled_X[:, divider2:], shuffled_Y[:, :divider1], \
+        shuffled_Y[:, divider1:divider2], shuffled_Y[:, divider2:], numOutputNodes
 
 
 def data_augmentation(X, Y, num):
@@ -129,6 +155,7 @@ def data_augmentation(X, Y, num):
     Y_one_hot = np.zeros((5, Y.size)) # creates a one-hot vector with Y
     Y_one_hot[Y.astype(int), np.arange(Y.size)] = 1
 
+    np.random.seed(0) # for consistency
     for n in range(num): # repeat to get a 'num' number of samples
         indices = np.random.choice(Y.size, 49, replace = False) # randomly selects 49 columns to use, without replacement
         chooseX = X[:, indices]
@@ -146,3 +173,32 @@ def data_augmentation(X, Y, num):
     bigY = np.matmul(weights, bigY).reshape((1, num)) # finds the weighted average of all labels
 
     return bigX, bigY
+
+# save the calculated data to files for fast retrieval
+
+# a, b, c, d, e, f, g = extract_training_data()
+# np.save('xtraincoords.npy', a)
+# np.save('xdevcoords.npy', b)
+# np.save('xtestcoords.npy', c)
+# np.save('ytraincoords.npy', d)
+# np.save('ydevcoords.npy', e)
+# np.save('ytestcoords.npy', f)
+
+# h, i, j, k, l, m, n = extract_training_data(num = 10000, augment = True)
+# np.save('xtrainavgcoords.npy', h)
+# np.save('xdevavgcoords.npy', i)
+# np.save('xtestavgcoords.npy', j)
+# np.save('ytrainavgcoords.npy', k)
+# np.save('ydevavgcoords.npy', l)
+# np.save('ytestavgcoords.npy', m)
+
+# o, p, q, r, s, t, u, v, w, x = extract_training_data(multi = True)
+# np.save('xtrainmulti.npy', o)
+# np.save('xdevmulti.npy', p)
+# np.save('xtestmulti.npy', q)
+# np.save('y1trainmulti.npy', r)
+# np.save('y1devmulti.npy', s)
+# np.save('y1testmulti.npy', t)
+# np.save('y2trainmulti.npy', u)
+# np.save('y2devmulti.npy', v)
+# np.save('y2testmulti.npy', w)
