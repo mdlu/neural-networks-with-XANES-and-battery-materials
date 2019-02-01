@@ -32,12 +32,13 @@ def create_placeholders(n_x, n_y):
     return X, Y
 
 def create_placeholders_multi(n_x, n_y1, n_y2):
+    # used for the multi-task learning model
     X = tf.placeholder(tf.float32, shape=(n_x, None), name='X')
     Y1 = tf.placeholder(tf.float32, shape=(n_y1, None), name='Y1')
     Y2 = tf.placeholder(tf.float32, shape=(n_y2, None), name='Y2')
     return X, Y1, Y2
 
-def initialize_parameters(L1_units=14, L2_units=9, L3_units=5, regression = False):
+def initialize_parameters(L1_units=10, L2_units=7, L3_units=5, regression = False):
     """
     Initializes parameters to build a neural network with tensorflow.
 
@@ -55,17 +56,17 @@ def initialize_parameters(L1_units=14, L2_units=9, L3_units=5, regression = Fals
     W2 = tf.get_variable("W2", [L2_units, L1_units], initializer=tf.contrib.layers.xavier_initializer(seed=1))
     b2 = tf.get_variable("b2", [L2_units, 1], initializer=tf.contrib.layers.xavier_initializer(seed=1))
     
-    if not regression: # currently, in the regression case, we are only using one hidden layer; this is for the case when we have two
+    if not regression: # currently, in the regression case, we are only using one hidden layer; this code is for the case when we have two
         W3 = tf.get_variable("W3", [L3_units, L2_units], initializer=tf.contrib.layers.xavier_initializer(seed=1))
         b3 = tf.get_variable("b3", [L3_units, 1], initializer=tf.contrib.layers.xavier_initializer(seed=1))
         parameters = {"W1": W1, "b1": b1, "W2": W2, "b2": b2, "W3": W3, "b3": b3}
-
     else:
         parameters = {"W1": W1, "b1": b1, "W2": W2, "b2": b2}
 
     return parameters
 
 def initialize_parameters_multi(L1_units, L2_units_1, L2_units_2, L3_units_1, L3_units_2):
+    """ Same as initialize_parameters(), except used for the multi-task learning model. """
 
     tf.set_random_seed(1) # for consistency
     W1 = tf.get_variable("W1", [L1_units, 170], initializer=tf.contrib.layers.xavier_initializer(seed=1))
@@ -82,7 +83,7 @@ def initialize_parameters_multi(L1_units, L2_units_1, L2_units_2, L3_units_1, L3
     parameters = {"W1" : W1, "b1": b1, "W2_1" : W2_1, "b2_1" : b2_1, "W2_2" : W2_2, "b2_2": b2_2, "W3_1" : W3_1, "b3_1" : b3_1, "W3_2" : W3_2, "b3_2" : b3_2}
     return parameters
 
-def forward_propagation(X, parameters, training, istanh1, istanh2, batchnorm, dropout = 0.5, regression = False):
+def forward_propagation(X, parameters, training, istanh1, istanh2, batchnorm, dropout = 1.0, regression = False):
     """
     Implements the forward propagation for the model: LINEAR -> RELU -> LINEAR -> RELU -> LINEAR -> SOFTMAX
 
@@ -110,16 +111,14 @@ def forward_propagation(X, parameters, training, istanh1, istanh2, batchnorm, dr
     sess = tf.Session()
     training = sess.run(training)
 
-    # if training:
-    #     X = tf.nn.dropout(X, dropout)
     Z1 = tf.add(tf.matmul(W1, X), b1)
     if batchnorm:
         Z1 = tf.layers.batch_normalization(Z1, training = training, momentum = 0.99, axis = 0)
-    if istanh1:
+    if istanh1: # determines the activation function in the first layer
         A1 = tf.nn.tanh(Z1)
     else:
         A1 = tf.nn.relu(Z1)
-    if training:
+    if training: # dropout is not used during testing
         A1 = tf.nn.dropout(A1, dropout)
     Z2 = tf.add(tf.matmul(W2, A1), b2)
     if regression:
@@ -128,7 +127,7 @@ def forward_propagation(X, parameters, training, istanh1, istanh2, batchnorm, dr
     else:
         if batchnorm:
             Z2 = tf.layers.batch_normalization(Z2, training = training, momentum = 0.99, axis = 0)
-        if istanh2:
+        if istanh2: # determines the activation function in the second layer
             A2 = tf.nn.tanh(Z2)
         else:
             A2 = tf.nn.relu(Z2)
@@ -138,7 +137,9 @@ def forward_propagation(X, parameters, training, istanh1, istanh2, batchnorm, dr
 
         return Z3
 
-def forward_propagation_multi(X, parameters):
+def forward_propagation_multi(X, parameters, training, batchnorm = True, dropout = 0.5):
+    """ Simplified version of forward_propagation(), except for the multi-task learning model. """
+    
     # Retrieve the parameters from the dictionary "parameters"
     W1 = parameters['W1']
     b1 = parameters['b1']
@@ -151,13 +152,29 @@ def forward_propagation_multi(X, parameters):
     W3_2 = parameters['W3_2']
     b3_2 = parameters['b3_2']
 
+    sess = tf.Session()
+    training = sess.run(training)
+
     Z1 = tf.add(tf.matmul(W1, X), b1)
+    if batchnorm:
+        Z1 = tf.layers.batch_normalization(Z1, training = training, momentum = 0.99, axis = 0)
     A1 = tf.nn.relu(Z1)
+    if training: # dropout is not used during testing
+        A1 = tf.nn.dropout(A1, dropout)
     
     Z2_1 = tf.add(tf.matmul(W2_1, A1), b2_1)
+    if batchnorm:
+        Z2_1 = tf.layers.batch_normalization(Z2_1, training = training, momentum = 0.99, axis = 0)
     A2_1 = tf.nn.relu(Z2_1)
+    if training: # dropout is not used during testing
+        A2_1 = tf.nn.dropout(A2_1, dropout)
+
     Z2_2 = tf.add(tf.matmul(W2_2, A1), b2_2)
+    if batchnorm:
+        Z2_2 = tf.layers.batch_normalization(Z2_2, training = training, momentum = 0.99, axis = 0)
     A2_2 = tf.nn.relu(Z2_2)
+    if training: # dropout is not used during testing
+        A2_2 = tf.nn.dropout(A2_2, dropout)
     
     Z3_1 = tf.add(tf.matmul(W3_1, A2_1), b3_1)
     Z3_2 = tf.add(tf.matmul(W3_2, A2_2), b3_2)
@@ -194,7 +211,7 @@ def compute_cost(Z3, Y, parameters, beta = 0):
 
 def compute_reg_cost(Z3, Y, parameters, beta = 0):
     """
-    Computes the cost using the mean squared error. Regularization is optional.
+    Computes the cost using the mean squared error for the regression model. Regularization is optional.
     Arguments and returns are the same as for compute_cost().
     """
 
@@ -208,6 +225,22 @@ def compute_reg_cost(Z3, Y, parameters, beta = 0):
     cost = tf.reduce_mean(cost + beta * regularizers)
     return cost
 
+def compute_costs(Z3_1, Z3_2, Y1, Y2, parameters, beta1 = 0, beta2 = 0):
+    """ Computes the two cost functions for the multi task learning model. """
+
+    cost1 = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=Z3_1, labels=Y1))
+    cost2 = tf.reduce_mean(tf.squared_difference(Z3_2, Y2)) 
+
+    W1 = parameters['W1']
+    W2_1 = parameters['W2_1']
+    W2_2 = parameters['W2_2']
+    W3_1 = parameters['W3_1']
+    W3_2 = parameters['W3_2']
+
+    cost1 = tf.reduce_mean(cost1 + beta1 * (tf.nn.l2_loss(W1) + tf.nn.l2_loss(W2_1) + tf.nn.l2_loss(W3_1)))
+    cost2 = tf.reduce_mean(cost2 + beta2 * (tf.nn.l2_loss(W1) + tf.nn.l2_loss(W2_2) + tf.nn.l2_loss(W3_2)))
+
+    return cost1, cost2
 
 def random_mini_batches(X, Y, mini_batch_size = 16, seed = 0):
     """
@@ -224,7 +257,7 @@ def random_mini_batches(X, Y, mini_batch_size = 16, seed = 0):
     """
     
     m = X.shape[1]                  # number of training examples
-    np.random.seed(seed)          # if consistent results are desired
+    np.random.seed(seed)            # if consistent results are desired
     
     permutation = list(np.random.permutation(m))
     shuffled_X = X[:, permutation]
@@ -236,7 +269,16 @@ def random_mini_batches(X, Y, mini_batch_size = 16, seed = 0):
     return mini_batches
 
 def load_data(task):
-    """ Loads the computed data arrays stored on the computer. """
+    """ Loads the computed data arrays stored on the computer in .npy files. 
+        The names of the files are based on how the files created at the bottom of extract_training_data.py.
+        
+        Arguments:
+        task: string, defines which model we are using
+        
+        Returns:
+        data: a list of what would have been the output of extract_training_data(), except the arrays are saved locally
+        and do not need to be recomputed for every run of the code 
+    """
 
     data = []
 
@@ -245,21 +287,21 @@ def load_data(task):
             for j in ['train', 'dev', 'test']:
                 name = './parsed_data/' + i + j + 'coords.npy'
                 data.append(np.load(name))
-        data.append(5)
+        data.append(5) # numOutputNodes is 5
 
     elif task == 'regression':
         for i in ['x', 'y']:
             for j in ['train', 'dev', 'test']:
                 name = './parsed_data/' + i + j + 'avgcoords.npy'
                 data.append(np.load(name))
-        data.append(1)
+        data.append(1) # numOutputNodes is 1
     
     elif task == 'multi_task':
         for i in ['x', 'y1', 'y2']:
             for j in ['train', 'dev', 'test']:
                 name = './parsed_data/' + i + j + 'multi.npy'
                 data.append(np.load(name))
-        data.append(5)
+        data.append(5) # numOutputNodes is 5
     
     else:
         raise ValueError('invalid input')
